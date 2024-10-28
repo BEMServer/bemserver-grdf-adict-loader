@@ -1,6 +1,6 @@
 [project]
 name = "bemserver-grdf-adict-loader"
-version = "0.1.0"
+version = "0.2.0"
 description = "Load data from GRDF Adict API into BEMServer"
 readme = "README.rst"
 license = { file = "LICENSE" }
