@@ -20,26 +20,28 @@ logger = logging.getLogger(__name__)
 def get_grdf_data(config, start_date, end_date):
     """Get GRDF data"""
 
-    grdf = API(config["CLIENT_ID"], config["CLIENT_SECRET"])
-
     logger.info("Get GRDF consumptions")
+
+    data = {}
+
+    grdf = API(config["CLIENT_ID"], config["CLIENT_SECRET"])
     try:
         resp = grdf.donnees_consos_informatives(
             config["PCE"],
             from_date=start_date.isoformat(),
             to_date=end_date.isoformat(),
         )
-    except requests.exceptions.RequestException as exc:
+    except requests.exceptions.RequestException:
         logger.error("Get GRDF consumptions failed")
-        raise RuntimeError from exc
-
-    logger.info("Parse GRDF response")
-    data = {}
-    for releve in resp:
-        rel = releve["releve_fin"]["index_brut_fin"]
-        date = rel["horodate_Index"]
-        index = rel["valeur_index"]
-        data[date] = index
+    else:
+        logger.info("Parse GRDF response")
+        for releve in resp:
+            if releve["releve_fin"] is None:
+                logger.error(releve["statut_restitution"]["message"])
+            rel = releve["releve_fin"]["index_brut_fin"]
+            date = rel["horodate_Index"]
+            index = rel["valeur_index"]
+            data[date] = index
 
     return data
 
@@ -54,7 +56,7 @@ def upload_data(config, data):
     auth_resp = api_client.auth.get_tokens(config["AUTH_MAIL"], config["AUTH_PASSWORD"])
     if auth_resp.data["status"] == "failure":
         logger.error("BEMServer auth data failed")
-        raise RuntimeError
+        return
 
     api_client.set_authentication_method(
         BEMServerApiClient.make_bearer_token_auth(
@@ -78,7 +80,6 @@ def upload_data(config, data):
             if getattr(exc, attr, None) is not None
         }
         logger.error("Upload data failed: %(error)s", {"error": error})
-        raise RuntimeError from exc
 
 
 @click.command()
@@ -95,8 +96,6 @@ def bemserver_grdf_adict_loader(config_file_path):
     start = now - dt.timedelta(days=int(cfg["SCHEDULE"]["START_DAYS_DELAY"]))
     end = now - dt.timedelta(days=int(cfg["SCHEDULE"]["END_DAYS_DELAY"]))
 
-    try:
-        grdf_data = get_grdf_data(cfg["GRDF"], start, end)
+    grdf_data = get_grdf_data(cfg["GRDF"], start, end)
+    if grdf_data is not None:
         upload_data(cfg["BEMSERVER"], grdf_data)
-    except RuntimeError:
-        pass
